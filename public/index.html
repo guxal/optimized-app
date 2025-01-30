@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Notificaciones en Tiempo Real</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+        }
+
+        #notifications {
+            margin-top: 20px;
+            padding: 10px;
+            border: 1px solid #ccc;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>Notificaciones en Tiempo Real</h1>
+    <button id="sendNotification">Enviar Notificación</button>
+    <div id="notifications">
+        <p>Esperando notificaciones...</p>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        const socket = io();  // Conectar al servidor Socket.io
+
+        // Escuchar notificaciones del servidor
+        socket.on('notification', (message) => {
+            const notificationsDiv = document.getElementById('notifications');
+            const newNotification = document.createElement('p');
+            newNotification.textContent = `Notificación: ${message}`;
+            notificationsDiv.appendChild(newNotification);
+        });
+
+        // Enviar notificación al servidor
+        document.getElementById('sendNotification').addEventListener('click', () => {
+            fetch('/notify?message=Hola desde el frontend')
+                .then(response => response.text())
+                .then(data => console.log(data))
+                .catch(error => console.error('Error:', error));
+        });
+    </script>
+</body>
+
+</html>
