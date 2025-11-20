@@ -1,0 +1,74 @@
+image: node:18
+
+definitions:
+  caches:
+    npm: ~/.npm
+
+  steps:
+    - step: &unit-tests
+        name: Run Unit Tests
+        caches:
+          - npm
+        script:
+          - npm install
+          - npm run test:unit -- --coverage
+        artifacts:
+          - coverage/**
+
+    - step: &integration-tests
+        name: Run Integration Tests
+        caches:
+          - npm
+        script:
+          - npm install
+          - npm run test:integration -- --coverage
+        artifacts:
+          - coverage/**
+
+    - step: &sonar-scan
+        name: SonarCloud Quality Gate
+        script:
+          - pipe: sonarsource/sonarcloud-scan:1.4.0
+            variables:
+              SONAR_TOKEN: $SONAR_TOKEN
+              EXTRA_ARGS: "-Dsonar.projectKey=$SONAR_PROJECT_KEY -Dsonar.organization=$SONAR_ORG"
+          - pipe: sonarsource/sonarcloud-quality-gate:0.1.5
+            variables:
+              SONAR_TOKEN: $SONAR_TOKEN
+
+    - step: &deploy-staging
+        name: Deploy to Staging
+        deployment: staging
+        script:
+          - echo "Deploying to Staging..."
+          - bash ./deploy/deploy-staging.sh
+
+    - step: &deploy-prod
+        name: Deploy to Production
+        trigger: manual
+        deployment: production
+        script:
+          - echo "Deploying to Production..."
+          - bash ./deploy/deploy-prod.sh
+
+pipelines:
+  branches:
+    IC:
+      - parallel:
+          - step: *unit-tests
+          - step: *integration-tests
+      - step: *sonar-scan
+
+    PRE:
+      - parallel:
+          - step: *unit-tests
+          - step: *integration-tests
+      - step: *sonar-scan
+      - step: *deploy-staging
+
+    PRO:
+      - parallel:
+          - step: *unit-tests
+          - step: *integration-tests
+      - step: *sonar-scan
+      - step: *deploy-prod

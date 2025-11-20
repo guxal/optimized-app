@@ -1,0 +1,51 @@
+trigger:
+  branches:
+    include:
+      - main
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  ACR_NAME: 'myacrregistry'
+  ACR_LOGIN_SERVER: 'myacrregistry.azurecr.io'
+  IMAGE_NAME: 'optimized-app'
+  BUILD_TAG: '$(Build.BuildId)'
+
+steps:
+
+- task: NodeTool@0
+  inputs:
+    versionSpec: '18.x'
+  displayName: 'Install Node.js'
+
+- script: |
+    npm install
+    npm test
+  displayName: 'Run Tests'
+
+- task: Docker@2
+  displayName: 'Build Docker Image'
+  inputs:
+    command: 'build'
+    repository: '$(ACR_LOGIN_SERVER)/$(IMAGE_NAME)'
+    tags: '$(BUILD_TAG)'
+
+- task: Docker@2
+  displayName: 'Push Image to ACR'
+  inputs:
+    containerRegistry: 'ACR-Service-Connection'
+    repository: '$(ACR_LOGIN_SERVER)/$(IMAGE_NAME)'
+    command: 'push'
+    tags: |
+      $(BUILD_TAG)
+
+- task: AzureCLI@2
+  displayName: 'Deploy to AKS'
+  inputs:
+    azureSubscription: 'Azure-Connection'
+    scriptType: 'bash'
+    scriptLocation: 'inlineScript'
+    inlineScript: |
+      az aks get-credentials --resource-group MyResourceGroup --name MyAKSCluster
+      kubectl set image deployment/optimized-app optimized-app=$(ACR_LOGIN_SERVER)/$(IMAGE_NAME):$(BUILD_TAG)

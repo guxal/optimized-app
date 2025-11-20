@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: optimized-app-prod
+  labels:
+    app: optimized-app
+    env: prod

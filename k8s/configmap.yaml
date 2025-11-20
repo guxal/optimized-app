@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: optimized-app-config
+  namespace: optimized-app-prod
+data:
+  NODE_ENV: "production"
+  APP_NAME: "optimized-app"
+  LOG_LEVEL: "info"
+  # Add other non-sensitive config here
