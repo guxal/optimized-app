@@ -1,9 +1,3 @@
-Perfecto. Vamos a **iniciar con la Tarea 4**, creando la **guía completa y profesional** para estructurar ramas en Bitbucket, alineada con lo que pide la prueba técnica.
-
-Aquí tienes el documento **bb-branch-guide.md**, totalmente listo para entregar.
-
----
-
 # ✅ **bb-branch-guide.md**
 
 **Guía de estructuración de ramas IC, PRE y PRO para Bitbucket**

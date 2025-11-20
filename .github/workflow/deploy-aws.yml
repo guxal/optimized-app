@@ -1,0 +1,112 @@
+name: Deploy to AWS
+
+on:
+  push:
+    branches:
+      - dev
+      - staging
+      - main
+
+env:
+  AWS_REGION: "us-east-1"
+  ECR_REPOSITORY: "optimized-app"
+  IMAGE_TAG: ${{ github.sha }}
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build Docker image
+        run: |
+          docker build -t $ECR_REPOSITORY:$IMAGE_TAG .
+          docker tag $ECR_REPOSITORY:$IMAGE_TAG ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:$IMAGE_TAG
+
+      - name: Push Docker image
+        run: |
+          docker push ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:$IMAGE_TAG
+
+  deploy:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Download ECS task definition
+        run: |
+          aws ecs describe-task-definition --task-definition optimized-app > task-def.json
+
+      - name: Update image in task definition
+        run: |
+          cat task-def.json | \
+          jq --arg IMAGE "${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${IMAGE_TAG}" \
+          '.taskDefinition.containerDefinitions[0].image = $IMAGE' \
+          > new-task-def.json
+
+      - name: Register new task definition
+        id: register
+        run: |
+          aws ecs register-task-definition \
+            --cli-input-json file://new-task-def.json > new-task-out.json
+
+          TASK_DEF_ARN=$(cat new-task-out.json | jq -r '.taskDefinition.taskDefinitionArn')
+          echo "task_def_arn=$TASK_DEF_ARN" >> $GITHUB_OUTPUT
+
+      - name: Deploy new version to ECS service
+        id: deploy
+        run: |
+          aws ecs update-service \
+            --cluster optimized-app-cluster \
+            --service optimized-app-service \
+            --task-definition ${{ steps.register.outputs.task_def_arn }}
+
+      - name: Wait for service stability
+        run: |
+          aws ecs wait services-stable \
+            --cluster optimized-app-cluster \
+            --services optimized-app-service
+
+      - name: Notify success
+        if: success()
+        uses: slackapi/slack-github-action@v1
+        with:
+          payload: |
+            {
+              "text": ":white_check_mark: Deployment successful in branch ${{ github.ref_name }}"
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+      - name: Rollback on failure
+        if: failure()
+        run: |
+          echo "Deployment failed, rolling back..."
+          PREVIOUS=$(aws ecs describe-services \
+            --cluster optimized-app-cluster \
+            --services optimized-app-service \
+            | jq -r '.services[0].taskDefinition')
+
+          aws ecs update-service \
+            --cluster optimized-app-cluster \
+            --service optimized-app-service \
+            --task-definition $PREVIOUS
